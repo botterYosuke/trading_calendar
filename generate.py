@@ -2,6 +2,8 @@ from ics import Calendar, Event
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 from lib.jquants import jquants
+import re
+import requests
 
 def build_event(summary, dt, uid):
     e = Event()
@@ -49,6 +51,31 @@ def generate_ics(jq):
     to_date = (today + timedelta(days=365)).strftime("%Y-%m-%d")
     
     calendar_list, calendar_df = jq.get_market_trading_calendar(from_=from_date, to=to_date)
+    
+    # エラーが発生した場合（空のリストが返された場合）、エラーメッセージから期間を抽出して再試行
+    if not calendar_list:
+        # エラーメッセージを取得するために直接APIを呼び出す
+        params = {"from": from_date, "to": to_date}
+        res = requests.get(f"{jq.API_URL}/v1/markets/trading_calendar", params=params, headers=jq.headers)
+        
+        if res.status_code != 200:
+            error_data = res.json()
+            error_message = error_data.get("message", "")
+            
+            # エラーメッセージから期間を抽出（例: "Your subscription covers the following dates: 2023-09-10 ~ 2025-09-10"）
+            date_range_pattern = r'(\d{4}-\d{2}-\d{2})\s*~\s*(\d{4}-\d{2}-\d{2})'
+            match = re.search(date_range_pattern, error_message)
+            
+            if match:
+                subscription_from = match.group(1)
+                subscription_to = match.group(2)
+                print(f"サブスクリプション期間を検出しました: {subscription_from} ~ {subscription_to}")
+                print(f"この期間内で再度取得を試みます...")
+                
+                # サブスクリプション期間内で再度取得
+                calendar_list, calendar_df = jq.get_market_trading_calendar(from_=subscription_from, to=subscription_to)
+            else:
+                print(f"エラーメッセージから期間を抽出できませんでした: {error_message}")
     
     for item in calendar_list:
         date_str = item.get("Date", "")
