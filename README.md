@@ -2,6 +2,6 @@
 
 例：
 ```
-https://botterYosuke.github.io/trading_calendar/japan-all-stocks.ics
+https://botteryosuke.github.io/trading_calendar/japan-all-stocks.ics
 ```
 Google カレンダーが自動で読み込み・同期します。

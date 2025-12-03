@@ -82,6 +82,12 @@ pytest tests/test_generate.py::TestGenerateICS
 - `test_generate_ics_contains_holidays`: ICSファイルに休場日が含まれることを確認
 - `test_generate_ics_event_format`: ICSファイルのイベント形式が正しいことを確認
 
+### エラーハンドリングテスト（モックを使用）
+
+- `test_error_message_date_extraction`: エラーメッセージから期間を抽出する機能のテスト（認証情報不要）
+- `test_generate_ics_error_handling_with_subscription_period`: サブスクリプション期間エラーが発生した場合の再試行機能のテスト
+- `test_generate_ics_retry_with_subscription_period_mock`: モックを使用したサブスクリプション期間エラー時の再試行テスト
+
 ## 注意事項
 
 - **統合テストは実際のJ-Quants APIを呼び出します**
