@@ -24,7 +24,7 @@ jobs:
 
     - name: Generate ICS
       env:
-        JQuants_EMAIL_ADDRESS: ${{ secrets.JQUANTS_MAILADDRESS }}
+        JQuants_EMAIL_ADDRESS: ${{ secrets.JQUANTS_EMAIL_ADDRESS }}
         JQuants_PASSWORD: ${{ secrets.JQUANTS_PASSWORD }}
       run: python generate.py
 
