@@ -1,0 +1,7 @@
+# データ処理
+pandas==2.2.2
+
+# ユーティリティ
+requests==2.31.0
+python-dotenv==1.0.1
+ics==0.8.0
