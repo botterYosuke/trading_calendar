@@ -12,6 +12,10 @@ def build_event(summary, dt, uid):
     e.name = summary
     e.begin = dt
     e.uid = uid
+    # 終日イベントとして設定（DTSTART;VALUE=DATE形式になる）
+    e.make_all_day()
+    # DTSTAMPを設定（Googleカレンダーで必須）
+    e.created = datetime.now()
     return e
 
 
@@ -138,7 +142,7 @@ def add_holiday_events(c, calendar_list):
 def save_calendar_to_file(c, filepath="japan-all-stocks.ics"):
     """カレンダーをファイルに保存"""
     with open(filepath, "w", encoding="utf-8") as f:
-        f.write(str(c))
+        f.write(c.serialize())
 
 
 def generate_ics(jq):

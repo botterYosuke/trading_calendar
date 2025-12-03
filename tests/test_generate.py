@@ -44,10 +44,15 @@ class TestBuildEvent:
         
         assert isinstance(event, Event)
         assert event.name == summary
+        # make_all_day()により終日イベントになるため、時刻は00:00:00になる
+        assert event.all_day == True
         # icsライブラリはArrowオブジェクトを返すため、datetimeに変換して比較（タイムゾーンを無視）
         event_dt = event.begin.datetime.replace(tzinfo=None)
-        assert event_dt == dt
+        # 終日イベントなので、日付のみが一致すればOK（時刻は00:00:00になる）
+        assert event_dt.date() == dt.date()
         assert event.uid == uid
+        # DTSTAMPが設定されていることを確認（Googleカレンダーで必須）
+        assert event.created is not None
     
     def test_build_event_with_date_only(self):
         """日付のみのイベント作成のテスト"""
@@ -58,10 +63,14 @@ class TestBuildEvent:
         event = build_event(summary, dt, uid)
         
         assert event.name == summary
+        # make_all_day()により終日イベントになる
+        assert event.all_day == True
         # icsライブラリはArrowオブジェクトを返すため、datetimeに変換して比較（タイムゾーンを無視）
         event_dt = event.begin.datetime.replace(tzinfo=None)
         assert event_dt == dt
         assert event.uid == uid
+        # DTSTAMPが設定されていることを確認（Googleカレンダーで必須）
+        assert event.created is not None
 
 
 class TestGetDateRange:
@@ -500,7 +509,12 @@ class TestGenerateICS:
                     if "BEGIN:VEVENT" in content:
                         assert "END:VEVENT" in content, "イベントの終了タグがありません"
                         assert "DTSTART" in content, "イベントの開始日時がありません"
+                        # 終日イベントの形式を確認（DTSTART;VALUE=DATE）
+                        assert "DTSTART;VALUE=DATE" in content, "終日イベントの形式が正しくありません"
+                        # DTSTAMPが存在することを確認（Googleカレンダーで必須）
+                        assert "DTSTAMP" in content, "DTSTAMPがありません（Googleカレンダーで必須）"
                         assert "SUMMARY" in content or "UID" in content, "イベントの基本情報がありません"
+                        assert "END:VCALENDAR" in content, "カレンダーの終了タグがありません"
                     
             finally:
                 builtins.open = original_open
