@@ -12,10 +12,9 @@ def build_event(summary, dt, uid):
     e.uid = uid
     return e
 
-def generate_ics(jq):
-    c = Calendar()
 
-    # 決算発表予定日を取得
+def add_announcement_events(c, jq):
+    """決算発表予定日のイベントをカレンダーに追加"""
     announcement_list, announcement_df = jq.get_fins_announcement()
     
     for item in announcement_list:
@@ -44,12 +43,29 @@ def generate_ics(jq):
                 print(f"日付の解析に失敗しました: {date_str}, エラー: {e}")
                 continue
 
-    # 取引カレンダーを取得（休日のみ）
-    # 未来1年間のデータを取得
+
+def get_date_range(days=365):
+    """日付範囲を取得（デフォルトは未来365日間）"""
     today = datetime.now()
     from_date = today.strftime("%Y-%m-%d")
-    to_date = (today + timedelta(days=365)).strftime("%Y-%m-%d")
+    to_date = (today + timedelta(days=days)).strftime("%Y-%m-%d")
+    return from_date, to_date
+
+
+def extract_subscription_period(error_message):
+    """エラーメッセージからサブスクリプション期間を抽出"""
+    date_range_pattern = r'(\d{4}-\d{2}-\d{2})\s*~\s*(\d{4}-\d{2}-\d{2})'
+    match = re.search(date_range_pattern, error_message)
     
+    if match:
+        subscription_from = match.group(1)
+        subscription_to = match.group(2)
+        return subscription_from, subscription_to
+    return None, None
+
+
+def get_trading_calendar_with_retry(jq, from_date, to_date):
+    """取引カレンダーを取得（エラー時はサブスクリプション期間を抽出して再試行）"""
     calendar_list, calendar_df = jq.get_market_trading_calendar(from_=from_date, to=to_date)
     
     # エラーが発生した場合（空のリストが返された場合）、エラーメッセージから期間を抽出して再試行
@@ -62,13 +78,9 @@ def generate_ics(jq):
             error_data = res.json()
             error_message = error_data.get("message", "")
             
-            # エラーメッセージから期間を抽出（例: "Your subscription covers the following dates: 2023-09-10 ~ 2025-09-10"）
-            date_range_pattern = r'(\d{4}-\d{2}-\d{2})\s*~\s*(\d{4}-\d{2}-\d{2})'
-            match = re.search(date_range_pattern, error_message)
+            subscription_from, subscription_to = extract_subscription_period(error_message)
             
-            if match:
-                subscription_from = match.group(1)
-                subscription_to = match.group(2)
+            if subscription_from and subscription_to:
                 print(f"サブスクリプション期間を検出しました: {subscription_from} ~ {subscription_to}")
                 print(f"この期間内で再度取得を試みます...")
                 
@@ -77,6 +89,11 @@ def generate_ics(jq):
             else:
                 print(f"エラーメッセージから期間を抽出できませんでした: {error_message}")
     
+    return calendar_list, calendar_df
+
+
+def add_holiday_events(c, calendar_list):
+    """休場日のイベントをカレンダーに追加"""
     for item in calendar_list:
         date_str = item.get("Date", "")
         holiday_division = item.get("HolidayDivision", 1)
@@ -93,8 +110,29 @@ def generate_ics(jq):
                 print(f"日付の解析に失敗しました: {date_str}, エラー: {e}")
                 continue
 
-    with open("japan-all-stocks.ics", "w", encoding="utf-8") as f:
+
+def save_calendar_to_file(c, filepath="japan-all-stocks.ics"):
+    """カレンダーをファイルに保存"""
+    with open(filepath, "w", encoding="utf-8") as f:
         f.write(str(c))
+
+
+def generate_ics(jq):
+    """ICSカレンダーファイルを生成"""
+    c = Calendar()
+    
+    # 決算発表予定日のイベントを追加
+    add_announcement_events(c, jq)
+    
+    # 取引カレンダーを取得（休日のみ）
+    from_date, to_date = get_date_range(days=365)
+    calendar_list, calendar_df = get_trading_calendar_with_retry(jq, from_date, to_date)
+    
+    # 休場日のイベントを追加
+    add_holiday_events(c, calendar_list)
+    
+    # カレンダーをファイルに保存
+    save_calendar_to_file(c)
 
 if __name__ == "__main__":
     # 環境変数を読み込み
