@@ -23,6 +23,9 @@ jobs:
       run: pip install -r requirements.txt
 
     - name: Generate ICS
+      env:
+        JQuants_EMAIL_ADDRESS: ${{ secrets.JQUANTS_MAILADDRESS }}
+        JQuants_PASSWORD: ${{ secrets.JQUANTS_PASSWORD }}
       run: python generate.py
 
     - name: Upload artifact
