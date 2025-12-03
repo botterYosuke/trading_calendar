@@ -2,8 +2,10 @@ from ics import Calendar, Event
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 from lib.jquants import jquants
+from lib.jpx import JPX
 import re
 import requests
+import pandas as pd
 
 def build_event(summary, dt, uid):
     e = Event()
@@ -14,9 +16,31 @@ def build_event(summary, dt, uid):
 
 
 def add_announcement_events(c, jq):
-    """決算発表予定日のイベントをカレンダーに追加"""
-    announcement_list, announcement_df = jq.get_fins_announcement()
+    """決算発表予定日のイベントをカレンダーに追加（J-Quants APIとJPX Excelの両方から取得）"""
+    # J-Quants APIから取得
+    jq_list, jq_df = jq.get_fins_announcement() if jq and jq.isEnable else ([], pd.DataFrame())
     
+    # JPX Excelから取得
+    jpx = JPX()
+    jpx_list, jpx_df = jpx.get_fins_announcement()
+    
+    # データをマージ
+    all_dataframes = []
+    if not jq_df.empty:
+        all_dataframes.append(jq_df)
+    if not jpx_df.empty:
+        all_dataframes.append(jpx_df)
+    
+    if all_dataframes:
+        # すべてのDataFrameをマージ
+        merged_df = pd.concat(all_dataframes, ignore_index=True)
+        # 重複を除去（CodeとDateの組み合わせで、JPX Excelのデータを優先）
+        merged_df = merged_df.drop_duplicates(subset=['Code', 'Date'], keep='first')
+        announcement_list = merged_df.to_dict(orient='records')
+    else:
+        announcement_list = []
+    
+    # イベントを追加
     for item in announcement_list:
         code = item.get("Code", "")
         company_name = item.get("CompanyName", "")

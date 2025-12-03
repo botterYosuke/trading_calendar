@@ -1,5 +1,7 @@
 # データ処理
 pandas==2.2.2
+openpyxl==3.1.2
+beautifulsoup4==4.12.2
 
 # ユーティリティ
 requests==2.31.0
