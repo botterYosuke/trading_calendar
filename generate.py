@@ -100,7 +100,7 @@ def get_trading_calendar_with_retry(jq, from_date, to_date):
     if not calendar_list:
         # エラーメッセージを取得するために直接APIを呼び出す
         params = {"from": from_date, "to": to_date}
-        res = requests.get(f"{jq.API_URL}/v1/markets/trading_calendar", params=params, headers=jq.headers)
+        res = requests.get(f"{jq.API_URL}/v2/markets/calendar", params=params, headers=jq.headers)
         
         if res.status_code != 200:
             error_data = res.json()

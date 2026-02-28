@@ -19,14 +19,16 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
+    - name: Install uv
+      uses: astral-sh/setup-uv@v5
+
     - name: Install deps
-      run: pip install -r requirements.txt
+      run: uv sync
 
     - name: Generate ICS
       env:
-        JQuants_EMAIL_ADDRESS: ${{ secrets.JQUANTS_EMAIL_ADDRESS }}
-        JQuants_PASSWORD: ${{ secrets.JQUANTS_PASSWORD }}
-      run: python generate.py
+        JQUANTS_API_KEY: ${{ secrets.JQUANTS_API_KEY }}
+      run: uv run python generate.py
 
     - name: Upload artifact
       uses: actions/upload-pages-artifact@v3

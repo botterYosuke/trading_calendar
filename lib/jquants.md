@@ -7,17 +7,17 @@
 
 ## 目次
 
-- [上場銘柄一覧（/listed/info）](#上場銘柄一覧listedinfo)
-- [日次株価（/prices/daily_quotes）](#日次株価pricesdaily_quotes)
-- [財務情報（/fins/statements）](#財務情報finsstatements)
-- [決算発表予定（/fins/announcement）](#決算発表予定finsannouncement)
-- [取引カレンダー（/market/trading_calendar）](#取引カレンダーmarkettrading_calendar)
+- [上場銘柄一覧（/v2/equities/master）](#上場銘柄一覧v2equitiesmaster)
+- [日次株価（/v2/equities/bars/daily）](#日次株価v2equitiesbarsdaily)
+- [財務情報（/v2/fins/summary）](#財務情報v2finssummary)
+- [決算発表予定（/v2/equities/earnings-calendar）](#決算発表予定v2equitiesearnings-calendar)
+- [取引カレンダー（/v2/markets/calendar）](#取引カレンダーv2marketscalendar)
 - [注意点 / 補足](#注意点--補足)
 - [参考（実装ファイル）](#参考実装ファイル)
 
 ---
 
-## 上場銘柄一覧（/listed/info）
+## 上場銘柄一覧（/v2/equities/master）
 
 ### 説明
 各上場銘柄の基本情報一覧を返します。主に銘柄コード、会社名、市場区分、業種などが含まれます。
@@ -214,7 +214,7 @@
 
 ---
 
-## 日次株価（/prices/daily_quotes）
+## 日次株価（/v2/equities/bars/daily）
 
 ### 説明
 銘柄ごとの日次終値・始値・高値・安値・出来高などを返します。調整済み価格（Adjustment*）や売買代金（TurnoverValue）なども含まれる場合があります。
@@ -477,7 +477,7 @@ J-Quants のデータは調整済みと未調整の両方が提供されるこ�
 
 ---
 
-## 財務情報（/fins/statements）
+## 財務情報（/v2/fins/summary）
 
 ### 説明
 企業の決算短信や有価証券報告書から得られる財務諸表の主要項目を返します。項目数が非常に多く（売上高、営業利益、EPS、総資産、配当など多数）、四半期別・通期別の予測/実績が含まれます。

@@ -25,10 +25,9 @@ load_dotenv()
 
 def skip_if_no_credentials():
     """J-Quantsの認証情報がない場合はテストをスキップ"""
-    email = os.getenv('JQuants_EMAIL_ADDRESS')
-    password = os.getenv('JQuants_PASSWORD')
-    if not email or not password:
-        pytest.skip("J-Quantsの認証情報が設定されていません。環境変数JQuants_EMAIL_ADDRESSとJQuants_PASSWORDを設定してください。")
+    api_key = os.getenv('JQUANTS_API_KEY')
+    if not api_key:
+        pytest.skip("J-Quantsの認証情報が設定されていません。環境変数 JQUANTS_API_KEY を設定してください。")
 
 
 class TestBuildEvent:
