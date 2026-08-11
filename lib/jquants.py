@@ -33,6 +33,7 @@ class jquants:
         self.API_URL = "https://api.jquants.com"
         self.api_key = os.getenv("JQUANTS_API_KEY")
         self.headers = {}
+        self.last_status_code = None
         self._initialized = True
         self.isEnable = False
 
@@ -77,7 +78,7 @@ class jquants:
         if res.status_code == 200:
             d = res.json()
             data = d.get("data", [])
-            while "pagination_key" in d:
+            while d.get("pagination_key"):
                 params["pagination_key"] = d["pagination_key"]
                 res = requests.get(
                     f"{self.API_URL}/v2/equities/master",
@@ -132,7 +133,7 @@ class jquants:
         if res.status_code == 200:
             d = res.json()
             data = d.get("data", [])
-            while "pagination_key" in d:
+            while d.get("pagination_key"):
                 params["pagination_key"] = d["pagination_key"]
                 res = requests.get(
                     f"{self.API_URL}/v2/equities/bars/daily",
@@ -186,7 +187,7 @@ class jquants:
         if res.status_code == 200:
             d = res.json()
             data = d.get("data", [])
-            while "pagination_key" in d:
+            while d.get("pagination_key"):
                 params["pagination_key"] = d["pagination_key"]
                 res = requests.get(
                     f"{self.API_URL}/v2/fins/summary",
@@ -207,40 +208,60 @@ class jquants:
         logger.error(f"API Error: {res.status_code} - {res.text}")
         return [], pd.DataFrame()
 
-    def get_fins_announcement(self) -> Tuple[list, pd.DataFrame]:
+    def get_fins_announcement(
+        self, code="", date="", scheduled_date=""
+    ) -> Tuple[list, pd.DataFrame]:
         """
-        決算発表予定日（/v2/equities/earnings-calendar）
+        決算発表予定日（/v2/fins/earnings-date）
 
-        （データ更新時刻）
-        - 不定期（更新がある日は）19:00頃
-
-        - [当該ページ](https://www.jpx.co.jp/listing/event-schedules/financial-announcement/index.html)で、3月期・９月期決算会社分に更新があった場合のみ19時ごろに更新されます。
+        code（銘柄コード）、date（公表日）、scheduled_date（発表予定日）の
+        いずれか1つの指定が必須です。2つ以上を同時に指定することはできません。
         """
-        # トークンリフレッシュが必要かチェック（V2では何もしない）
         self._refresh_token_if_needed()
 
-        params = {}
+        filters = {
+            "code": code,
+            "date": date,
+            "scheduled_date": scheduled_date,
+        }
+        params = {key: value for key, value in filters.items() if value != ""}
+        if len(params) != 1:
+            raise ValueError(
+                "code, date, scheduled_date のいずれか1つを指定してください"
+            )
 
         res = requests.get(
-            f"{self.API_URL}/v2/equities/earnings-calendar",
+            f"{self.API_URL}/v2/fins/earnings-date",
             params=params,
             headers=self.headers,
         )
+        self.last_status_code = res.status_code
         if res.status_code == 200:
             d = res.json()
             data = d.get("data", [])
-            while "pagination_key" in d:
+            while d.get("pagination_key"):
                 params["pagination_key"] = d["pagination_key"]
                 res = requests.get(
-                    f"{self.API_URL}/v2/equities/earnings-calendar",
+                    f"{self.API_URL}/v2/fins/earnings-date",
                     params=params,
                     headers=self.headers,
                 )
+                self.last_status_code = res.status_code
+                if res.status_code != 200:
+                    logger.error(f"API Error: {res.status_code} - {res.text}")
+                    return [], pd.DataFrame()
                 d = res.json()
                 data += d.get("data", [])
 
             df = pd.DataFrame(data)
             if not df.empty:
+                # ICS生成コードが利用するドメイン名を追加しつつ、v2の生フィールドも残す。
+                df["PublicationDate"] = df["PubDate"]
+                df["Date"] = df["SchDate"]
+                df["AnnouncementDate"] = df["SchDate"]
+                df["CompanyName"] = df["CoName"]
+                df["FiscalQuarter"] = df["FQName"]
+                df["FiscalYearEnd"] = df["FYE"]
                 df["source"] = "j-quants"
                 res = df.to_dict(orient="records")
                 return res, df
@@ -251,13 +272,13 @@ class jquants:
         return [], pd.DataFrame()
 
     def get_market_trading_calendar(
-        self, holidaydivision="", from_="", to=""
+        self, holidaydivision="", from_="", to="", hol_div=""
     ) -> Tuple[list, pd.DataFrame]:
         """
         取引カレンダー（/v2/markets/calendar）
 
         - 東証およびOSEにおける営業日、休業日、ならびにOSEにおける祝日取引の有無の情報を取得できます。
-        - データの取得では、休日区分（holidaydivision）または日付（from/to）の指定が可能です。
+        - データの取得では、休日区分（hol_div）または日付（from/to）の指定が可能です。
 
         （データ更新日）
         - 不定期（原則として、毎年2月頃をめどに翌年1年間の営業日および祝日取引実施日（予定）を更新します。）
@@ -266,8 +287,9 @@ class jquants:
         self._refresh_token_if_needed()
 
         params = {}
-        if holidaydivision != "":
-            params["holidaydivision"] = holidaydivision
+        holiday_filter = hol_div or holidaydivision
+        if holiday_filter != "":
+            params["hol_div"] = holiday_filter
         if from_ != "":
             params["from"] = from_
         if to != "":
@@ -279,7 +301,7 @@ class jquants:
         if res.status_code == 200:
             d = res.json()
             data = d.get("data", [])
-            while "pagination_key" in d:
+            while d.get("pagination_key"):
                 params["pagination_key"] = d["pagination_key"]
                 res = requests.get(
                     f"{self.API_URL}/v2/markets/calendar",

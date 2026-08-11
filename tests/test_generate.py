@@ -288,7 +288,7 @@ class TestGenerateICS:
         if not jq.isEnable:
             pytest.skip("J-Quants APIの認証に失敗しました")
 
-        announcement_list, announcement_df = jq.get_fins_announcement()
+        announcement_list, announcement_df = jq.get_fins_announcement(code="86970")
 
         assert isinstance(announcement_list, list)
         assert len(announcement_list) >= 0
@@ -384,7 +384,7 @@ class TestGenerateICS:
             pytest.skip("J-Quants APIの認証に失敗しました")
 
         # 決算発表予定日を取得
-        announcement_list, _ = jq.get_fins_announcement()
+        announcement_list, _ = jq.get_fins_announcement(code="86970")
 
         if len(announcement_list) == 0:
             pytest.skip("決算発表予定日のデータがありません")

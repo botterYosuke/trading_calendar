@@ -7,6 +7,10 @@ import re
 import requests
 import pandas as pd
 
+
+JQUANTS_EARNINGS_REQUEST_LIMIT = 4
+
+
 def build_event(summary, dt, uid):
     e = Event()
     e.add('summary', summary)
@@ -16,26 +20,53 @@ def build_event(summary, dt, uid):
     return e
 
 
-def add_announcement_events(c, jq):
-    """決算発表予定日のイベントをカレンダーに追加（J-Quants APIとJPX Excelの両方から取得）"""
-    # J-Quants APIから取得
-    jq_list, jq_df = jq.get_fins_announcement() if jq and jq.isEnable else ([], pd.DataFrame())
+def _clean_text(value):
+    """pandas の NaN/NaT を空文字にし、ICS用の文字列へ正規化する。"""
+    if value is None or pd.isna(value):
+        return ""
+    if isinstance(value, (datetime, pd.Timestamp)):
+        return value.strftime("%Y-%m-%d")
+    return str(value)
 
+
+def add_announcement_events(c, jq, scheduled_dates=None):
+    """決算発表予定日のイベントをカレンダーに追加（J-Quants APIとJPX Excelの両方から取得）"""
     # JPX Excelから取得
     jpx = JPX()
-    jpx_list, jpx_df = jpx.get_fins_announcement()
+    _, jpx_df = jpx.get_fins_announcement()
+
+    # v2 /fins/earnings-date は銘柄・公表日・発表予定日のいずれかが必須。
+    # JPX Excelに含まれる日付と、呼び出し側が指定した直近日付を候補にする。
+    query_dates = set(scheduled_dates or [])
+    if not jpx_df.empty and "Date" in jpx_df.columns:
+        query_dates.update(jpx_df["Date"].dropna().astype(str))
+
+    # Freeプランは5 req/min。先に取得する取引カレンダー1回と合わせるため、
+    # 決算予定日は今日以降の直近4日だけを照会する。遠い将来日はJPX Excelで補完する。
+    today = datetime.now().strftime("%Y-%m-%d")
+    query_dates = sorted(date for date in query_dates if date >= today)[
+        :JQUANTS_EARNINGS_REQUEST_LIMIT
+    ]
+
+    jq_dataframes = []
+    if jq and jq.isEnable:
+        for scheduled_date in query_dates:
+            _, jq_df = jq.get_fins_announcement(scheduled_date=scheduled_date)
+            if not jq_df.empty:
+                jq_dataframes.append(jq_df)
+            if getattr(jq, "last_status_code", None) == 429:
+                break
 
     # データをマージ
     all_dataframes = []
-    if not jq_df.empty:
-        all_dataframes.append(jq_df)
+    all_dataframes.extend(jq_dataframes)
     if not jpx_df.empty:
         all_dataframes.append(jpx_df)
 
     if all_dataframes:
         # すべてのDataFrameをマージ
         merged_df = pd.concat(all_dataframes, ignore_index=True)
-        # 重複を除去（CodeとDateの組み合わせで、JPX Excelのデータを優先）
+        # 重複を除去（CodeとDateの組み合わせで、詳細なJ-Quantsデータを優先）
         merged_df = merged_df.drop_duplicates(subset=['Code', 'Date'], keep='first')
         announcement_list = merged_df.to_dict(orient='records')
     else:
@@ -43,16 +74,17 @@ def add_announcement_events(c, jq):
 
     # イベントを追加
     for item in announcement_list:
-        code = item.get("Code", "")
-        company_name = item.get("CompanyName", "")
-        date_str = item.get("Date") or item.get("AnnouncementDate", "")
+        code = _clean_text(item.get("Code"))
+        company_name = _clean_text(item.get("CompanyName"))
+        date_str = _clean_text(item.get("Date") or item.get("AnnouncementDate"))
 
         if date_str:
             try:
                 # 日付文字列をdatetimeオブジェクトに変換
                 dt = datetime.strptime(date_str, "%Y-%m-%d")
-                fiscal_quarter = item.get("FiscalQuarter", "")
-                fiscal_year = item.get("FiscalYear", "")
+                fiscal_quarter = _clean_text(item.get("FiscalQuarter"))
+                fiscal_year = _clean_text(item.get("FiscalYear"))
+                fiscal_year_end = _clean_text(item.get("FiscalYearEnd"))
 
                 # イベント名を構築
                 summary_parts = [f"[決算] {company_name} ({code})"]
@@ -60,6 +92,8 @@ def add_announcement_events(c, jq):
                     summary_parts.append(fiscal_quarter)
                 if fiscal_year:
                     summary_parts.append(fiscal_year)
+                elif fiscal_year_end:
+                    summary_parts.append(fiscal_year_end)
                 summary = " ".join(summary_parts)
 
                 uid = f"{code}-announcement-{date_str}"
@@ -121,11 +155,16 @@ def add_holiday_events(c, calendar_list):
     """休場日のイベントをカレンダーに追加"""
     for item in calendar_list:
         date_str = item.get("Date", "")
-        holiday_division = item.get("HolidayDivision", 1)
-        is_trading_day = item.get("IsTradingDay", True)
+        # v2 は HolDiv を文字列で返す。旧形式も既存呼び出しとの互換用に受け付ける。
+        holiday_division = str(
+            item.get("HolDiv", item.get("HolidayDivision", "1"))
+        )
+        is_trading_day = item.get(
+            "IsTradingDay", holiday_division in {"1", "2"}
+        )
 
-        # 休日（HolidayDivision=0 または IsTradingDay=False）の場合のみイベントを追加
-        if date_str and (holiday_division == 0 or not is_trading_day):
+        # HolDiv=0 は非営業日、3 は非営業日（OSEの祝日取引あり）。
+        if date_str and (holiday_division in {"0", "3"} or not is_trading_day):
             try:
                 dt = datetime.strptime(date_str, "%Y-%m-%d")
                 summary = "[休場日] 取引所休場"
@@ -148,12 +187,22 @@ def generate_ics(jq):
     c.add('prodid', '-//Trading Calendar//EN')
     c.add('version', '2.0')
 
-    # 決算発表予定日のイベントを追加
-    add_announcement_events(c, jq)
-
     # 取引カレンダーを取得（休日のみ）
     from_date, to_date = get_date_range(days=365)
     calendar_list, calendar_df = get_trading_calendar_with_retry(jq, from_date, to_date)
+
+    # 新しいv2決算発表予定日APIは日付の完全一致検索のみ対応する。
+    # add_announcement_events がこの中から直近4取引日に照会を制限する。
+    scheduled_dates = [
+        item["Date"]
+        for item in calendar_list
+        if item.get("Date")
+        and str(item.get("HolDiv", item.get("HolidayDivision", "1")))
+        in {"1", "2"}
+    ]
+
+    # 決算発表予定日のイベントを追加
+    add_announcement_events(c, jq, scheduled_dates=scheduled_dates)
 
     # 休場日のイベントを追加
     add_holiday_events(c, calendar_list)
